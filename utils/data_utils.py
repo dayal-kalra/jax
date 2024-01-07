@@ -1,4 +1,6 @@
 import jax.numpy as jnp
+import jax
+import numpy as np
 import pickle as pl
 
 def _one_hot(x, k, dtype = jnp.float32):
