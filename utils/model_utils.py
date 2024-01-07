@@ -444,7 +444,7 @@ class WideResNet(nn.Module):
     num_classes: int = 10
     act: Callable = nn.relu
     varw: float = 1.0
-    scale: float 0.0
+    scale: float = 0.0
 
     @nn.compact
     def __call__(self, x):
