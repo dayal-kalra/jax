@@ -44,6 +44,7 @@ def _random_vertical_flip(key, x, prob):
     x = jnp.where(flip < prob, flippedX, x)
     return x
 
+"currently this function does not for generic image sizes"
 
 def crop(key, batch):
     """Random flips and crops."""
