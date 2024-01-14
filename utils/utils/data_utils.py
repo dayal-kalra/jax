@@ -4,19 +4,19 @@ import numpy as np
 import pickle as pl
 
 def _one_hot(x, k, dtype = jnp.float32):
-  """Create a one-hot encoding of x of size k."""
-  return jnp.array(x[:, None] == jnp.arange(k), dtype)
+    """Create a one-hot encoding of x of size k."""
+    return jnp.array(x[:, None] == jnp.arange(k), dtype)
 
 def _standardize(x, abc = 'ntp'):
-  """Standardization per sample across feature dimension."""
-  axes = tuple(range(1, len(x.shape)))  
-  mean = jnp.mean(x, axis = axes, keepdims = True)
-  std_dev = jnp.std(x, axis = axes, keepdims = True)
-  normx = (x - mean) / std_dev
-  if abc == 'mup':
-    in_dim = jnp.prod(jnp.array(x.shape[1:]))
-    normx /= jnp.sqrt(in_dim)
-  return normx
+    """Standardization per sample across feature dimension."""
+    axes = tuple(range(1, len(x.shape)))  
+    mean = jnp.mean(x, axis = axes, keepdims = True)
+    std_dev = jnp.std(x, axis = axes, keepdims = True)
+    normx = (x - mean) / std_dev
+    if abc == 'mup':
+        in_dim = jnp.prod(jnp.array(x.shape[1:]))
+        normx /= jnp.sqrt(in_dim)
+    return normx
 
 def _random_crop(x, pixels, key):
     """x should have shape [batch, img_dim, img_dim, channels]."""
@@ -46,7 +46,6 @@ def _random_vertical_flip(key, x, prob):
     x = jnp.where(flip < prob, flippedX, x)
     return x
 
-"currently this function does not for generic image sizes"
 
 def crop(key, batch):
     """Random flips and crops."""

@@ -83,13 +83,13 @@ def mixup(key, batch, alpha = 1.0):
 
     return mixed_image, mixed_label
 
+@jax.jit
 def transform(key, batch):
     image, label = batch
 
     key, split = jax.random.split(key)
 
     image = _random_horizontal_flip(key, image, prob = 0.1)
-
     subkey, key = jax.random.split(key, )
 
     N = image.shape[0]
@@ -99,6 +99,7 @@ def transform(key, batch):
     image = jnp.where(jax.random.uniform(split, (N, 1, 1, 1)) < 0.5, image[:, :, ::-1], image)
 
     key, split = jax.random.split(key)
+    
     batch_split = jax.random.split(split, N)
     image, label = crop(batch_split, (image, label))
 

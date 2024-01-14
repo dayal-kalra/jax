@@ -96,15 +96,24 @@ def train_step(state: TrainState, batch: Tuple, loss_function):
     state = state.apply_gradients(grads = grads)
     return state, logits, loss
 
-def compute_hessian(state, loss_function, batches, num_batches = 10, power_iterations = 20):
-    top_hessian = 0
+def compute_sharpness(state, loss_function, batches, num_batches = 10, power_iterations = 20):
+    """Compute sharpness for num_batches  """
+    # initialize
+    sharpness = list()
+    flat_params, rebuild_fn = jax.flatten_util.ravel_pytree(state.params)
+    key = jax.random.PRNGKey(24)
+    vs_init = jax.random.normal(key, shape = (flat_params.shape[0], 1))
+    vs_step = vs_init
+
     for batch_ix in range(num_batches):
         batch = next(batches)
         x, y = batch
-        top_hessian_batch, _ = hessian_step(state, batch, loss_function, power_iterations)
-        top_hessian += top_hessian_batch
-    top_hessian = top_hessian / num_batches
-    return top_hessian
+        #top_hessian_batch, _ = hessian_step(state, batch, loss_function, power_iterations)
+        sharpness_batch, vs_step, n_iter = hessian_spectrum_step(state, batch, loss_function, vs_init)
+        sharpness_batch = sharpness_batch.squeeze()
+        sharpness.append(sharpness_batch)
+    sharpness = sum(sharpness)/len(sharpness)
+    return sharpness
 
 
 def compute_metrics(state, loss_function, batches, num_examples, batch_size):
@@ -121,6 +130,7 @@ def compute_metrics(state, loss_function, batches, num_examples, batch_size):
     """
     total_loss = 0
     total_accuracy = 0
+    jit_apply_fn = jax.jit(state.apply_fn)
 
     num_batches = estimate_num_batches(num_examples, batch_size)
 
@@ -128,7 +138,8 @@ def compute_metrics(state, loss_function, batches, num_examples, batch_size):
         batch = next(batches)
         x, y = batch
         #calculate logits
-        logits = state.apply_fn({'params': state.params}, x)
+        logits = jit_apply_fn({'params': state.params}, x)
+        #logits = state.apply_fn({'params': state.params}, x)
         #calculate loss and accuracy
         total_loss += loss_function(logits, y)
         total_accuracy += compute_accuracy(logits, y)

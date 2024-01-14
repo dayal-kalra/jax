@@ -9,6 +9,7 @@ from flax import struct
 from jax.numpy.linalg import norm
 from jax.experimental import sparse
 import numpy as np
+import utils.data_utils as data_utils
 
 class TrainState(struct.PyTreeNode):
     step: int
@@ -106,7 +107,7 @@ def compute_hessian(state, loss_function, batches, num_batches = 10, power_itera
     return top_hessian
 
 
-def compute_metrics(state, loss_function, batches, num_examples, batch_size):
+def compute_metrics(state_fn, params, loss_function, batches, num_examples, batch_size):
     """
     Description: Estimates the loss and accuracy of a batched data stream
 
@@ -127,7 +128,7 @@ def compute_metrics(state, loss_function, batches, num_examples, batch_size):
         batch = next(batches)
         x, y = batch
         #calculate logits
-        logits = state.apply_fn({'params': state.params}, x)
+        logits = state_fn({'params': params}, x)
         #calculate loss and accuracy
         total_loss += loss_function(logits, y)
         total_accuracy += compute_accuracy(logits, y)

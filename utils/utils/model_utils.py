@@ -463,7 +463,6 @@ class WideResNet(nn.Module):
         x = nn.Dense(self.num_classes)(x)
         return x
 
-WideResNet20 = partial(WideResNet, stage_sizes = [3, 3, 3])
 WideResNet16 = partial(WideResNet, stage_sizes = [2, 2, 2])
 WideResNet28 = partial(WideResNet, stage_sizes = [4, 4, 4])
 WideResNet40 = partial(WideResNet, stage_sizes = [6, 6, 6])

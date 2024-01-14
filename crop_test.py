@@ -85,26 +85,8 @@ def train_and_evaluate(config: argparse.ArgumentParser, train_ds: Tuple, test_ds
 
             #get the next batch and calculate the step
             batch = next(batches)
-            imgs, targets = batch
-            step = config.num_batches*epoch + batch_ix
-
-            #train for one step
-            state, logits_step, loss_step = train_utils.train_step(state, batch, config.loss_fn)
-            
-            accuracy_step = train_utils.compute_accuracy(logits_step, targets)
-
-            #check for divergence
-            if (jnp.isnan(loss_step) or jnp.isinf(loss_step)): divergence = True; break
-
-        ## Estimate the final test accuracy
-
-        test_loss, test_accuracy = train_utils.compute_metrics(state_fn, state.params, config.loss_fn, test_batches, config.num_test, config.batch_size)
-        print(f'Epoch: {epoch}, loss: {loss_step:0.4f}, accuracy: {accuracy_step:0.4f}, Test loss: {test_loss:0.4f}, Test accuracy: {test_accuracy:0.4f}')
-    
-    ## Estimate the final test accuracy
-
-    test_loss, test_accuracy = train_utils.compute_metrics(state_fn, state.params, config.loss_fn, test_batches, config.num_test, config.batch_size)
-    print(f'Test loss: {test_loss:0.4f}, Test accuracy: {test_accuracy:0.4f}')
+            imgs, targets = data_utils.transform(key, batch)
+            exit(0)
     
     # end time
     end_time = time.time()
@@ -155,7 +137,7 @@ parser.add_argument('--lr_exp_start', type = float, default = 0.0)
 parser.add_argument('--lr_step', type = float, default = 0.5)
 parser.add_argument('--lr', type = float, default = 0.1)
 parser.add_argument('--momentum', type = float, default = 0.0)
-parser.add_argument('--batch_size', type = int, default = 128)
+parser.add_argument('--batch_size', type = int, default = 4)
 # Sharpness estimation
 parser.add_argument('--topk', type = int, default = 1)
 parser.add_argument('--test', type = str, default = 'True')
