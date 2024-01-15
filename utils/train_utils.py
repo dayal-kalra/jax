@@ -96,6 +96,75 @@ def train_step(state: TrainState, batch: Tuple, loss_function):
     state = state.apply_gradients(grads = grads)
     return state, logits, loss
 
+@partial(jax.jit, static_argnums = 2)
+def train_sharpness_power_step(state: TrainState, batch: Tuple, loss_function, v, m_iter: int = 10):
+    "Compute gradients, loss and accuracy for a single batch"
+    x, y = batch
+
+    def loss_fn(params):
+        "MSE loss"
+        logits = state.apply_fn({'params': params}, x)
+        loss = loss_function(logits, y)
+        return loss, logits
+    
+    flat_params, rebuild_fn = jax.flatten_util.ravel_pytree(state.params)
+
+    def loss_fn_flat(flat_params):
+        unflat_params = rebuild_fn(flat_params)
+        loss, _ = loss_fn(unflat_params)
+        return loss
+
+    def hvp(flat_params, v):
+        return jax.jvp(jax.grad(loss_fn_flat), [flat_params], [v])[1]
+
+    body_hvp = jax.tree_util.Partial(hvp, flat_params)
+    def fori_hvp(i, v):
+        return body_hvp(v / norm(v))
+    
+    v = v / norm(v)
+    v = jax.lax.fori_loop(0, m_iter, fori_hvp, v / norm(v))
+    sharpness = jnp.vdot(v / norm(v), hvp(flat_params, v / norm(v)))
+    
+    #calculate the gradients and loss
+    grad_fn = jax.value_and_grad(loss_fn, has_aux = True)
+    (loss, logits), grads = grad_fn(state.params)
+    #update the state
+    state = state.apply_gradients(grads = grads)
+    return state, logits, loss, sharpness, v
+
+def train_sharpness_lobpcg_step(state: TrainState, batch: Tuple, loss_function, vs, m_iter: int = 10):
+    "Compute gradients, loss and accuracy for a single batch"
+    x, y = batch
+
+    def loss_fn(params):
+        "MSE loss"
+        logits = state.apply_fn({'params': params}, x)
+        loss = loss_function(logits, y)
+        return loss, logits
+
+    flat_params, rebuild_fn = jax.flatten_util.ravel_pytree(state.params)
+
+    def loss_fn_flat(flat_params):
+        unflat_params = rebuild_fn(flat_params)
+        loss, _ = loss_fn(unflat_params)
+        return loss
+
+    def hvp(flat_params, v):
+        return jax.jvp(jax.grad(loss_fn_flat), [flat_params], [v])[1]
+
+    body_hvp = jax.tree_util.Partial(hvp, flat_params)
+    body_hvp = jax.vmap(body_hvp, 1, -1)
+
+    vs = vs / norm(vs, axis = -1, keepdims = True)
+    eigs, eigvs, n_iter = sparse.linalg.lobpcg_standard(body_hvp, vs, m = m_iter, tol = tol)
+
+    #calculate the gradients and loss
+    grad_fn = jax.value_and_grad(loss_fn, has_aux = True)
+    (loss, logits), grads = grad_fn(state.params)
+    #update the state
+    state = state.apply_gradients(grads = grads)
+    return state, logits, loss, eigs, eigvs, n_iter
+
 def compute_hessian(state, loss_function, batches, num_batches = 10, power_iterations = 20):
     top_hessian = 0
     for batch_ix in range(num_batches):
@@ -137,13 +206,31 @@ def compute_metrics(state_fn, params, loss_function, batches, num_examples, batc
     ds_accuracy = total_accuracy / num_batches
     return ds_loss, ds_accuracy
 
+
+def power_iterations(body_hvp, v, m_iter: int = 20):
+    "Power iteration using body hvp"
+    def fori_hvp(i, v):
+        return body_hvp(v / norm(v))
+    v = v / norm(v)
+    v = jax.lax.fori_loop(0, m_iter, fori_hvp, v / norm(v))
+    sharpness = jnp.vdot(v / norm(v), hvp(flat_params, v / norm(v)))
+    return sharpness, v
+
 @partial(jax.jit, static_argnums = 2)
-def hessian_step(state: TrainState, batch: Tuple, loss_function, power_iterations: int = 20):
-    "Compute top eigenvalue of the hessian using power iterations"
+def hessian_power_step(state: TrainState, batch: Tuple, loss_function, vs, m_iter: int = 20):
+    """
+    Description: Compute top eigenvalue of the hessian using power iterations
+    Inputs: 
+        -- state: model state
+        -- batch: Tuple of inputs and outputs
+        -- loss_function: function, mse or crossentropy
+    Returns:
+        -- sharpness
+        -- the corresponding eigenvector
+    """
     x, y = batch
 
     def loss_fn(params):
-        "MSE loss"
         logits = state.apply_fn({'params': params}, x)
         loss = loss_function(logits, y)
         return loss, logits
@@ -164,24 +251,32 @@ def hessian_step(state: TrainState, batch: Tuple, loss_function, power_iteration
     def fori_hvp(i, v):
         return body_hvp(v / norm(v))
 
-    # Power Iteration
-    key = jax.random.PRNGKey(24)
-    v = jax.random.normal(key, shape=flat_params.shape)
-    v = v / norm(v)
-    v = jax.lax.fori_loop(0, power_iterations, fori_hvp, v / norm(v))
-    top_eigen_value = jnp.vdot(v / norm(v), hvp(flat_params, v / norm(v)))
+    vs = vs / norm(vs)
+    vs = jax.lax.fori_loop(0, m_iter, fori_hvp, vs / norm(vs))
+    sharpness = jnp.vdot(vs / norm(vs), hvp(flat_params, vs / norm(vs)))
 
-    return top_eigen_value, v
+    return sharpness, vs
 
 
 @partial(jax.jit, static_argnums = 2)
-def hessian_spectrum_step(state: TrainState, batch: Tuple, loss_function, vs, m = 100, tol = 1e-10):
-    "Compute top-k eigenvalue and hessian"
+def hessian_lobpcg_step(state: TrainState, batch: Tuple, loss_function, vs, m_iter = 100, tol = 1e-10):
+    """
+    Description: Compute top-k eigenvalue and hessian using the LOBPCG method
+    Inputs:
+        -- state: model state for forward pass and parameters
+        -- batch: Tuple consisting of input and outputs pairs
+        -- loss_function: function, mse or crossentropy
+        -- vs: array of initial guesses of the eigenvectors
+    Returns:
+        -- eigs: top-k eigenvalues
+        -- eigvs: top-k eigenvectors
+        -- n_iter: number of iterations till convergence
+    """
     x, y = batch
     def loss_fn(params):
-        "MSE loss"
+        "Loss function"
         logits = state.apply_fn({'params': params}, x)
-        loss = mse_loss(logits, y)
+        loss = loss_function(logits, y)
         return loss, logits
     
     flat_params, rebuild_fn = jax.flatten_util.ravel_pytree(state.params)
@@ -197,8 +292,8 @@ def hessian_spectrum_step(state: TrainState, batch: Tuple, loss_function, vs, m 
     body_hvp = jax.tree_util.Partial(hvp, flat_params)
     body_hvp = jax.vmap(body_hvp, 1, -1)
 
-    vs = vs / jnp.linalg.norm(vs, axis = -1, keepdims = True)
-    eigs, eigvs, n_iter = sparse.linalg.lobpcg_standard(body_hvp, vs, m = m, tol = tol)
+    vs = vs / norm(vs, axis = -1, keepdims = True)
+    eigs, eigvs, n_iter = sparse.linalg.lobpcg_standard(body_hvp, vs, m = m_iter, tol = tol)
     return eigs, eigvs, n_iter
 
 def data_stream(seed, ds, batch_size, augment = False):

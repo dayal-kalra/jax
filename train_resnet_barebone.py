@@ -79,12 +79,6 @@ def train_and_evaluate(config: argparse.ArgumentParser, train_ds: Tuple, test_ds
     batches = train_utils.data_stream(seed, train_ds, config.batch_size, augment = config.use_augment)
     num_batches = config.num_batches # make it a non config variable
     
-    # prepare an initial guess for the eigenvectors of the hessian
-    flat_params, rebuild_fn = jax.flatten_util.ravel_pytree(state.params)
-
-    key = jax.random.PRNGKey(24)
-    vs_step = jax.random.normal(key, shape=flat_params.shape)
-
     for epoch in range(config.num_epochs):     
         if divergence: break
         
@@ -98,33 +92,27 @@ def train_and_evaluate(config: argparse.ArgumentParser, train_ds: Tuple, test_ds
             imgs, targets = batch
             step = config.num_batches*epoch + batch_ix
             
-            #state, logits_step, loss_step, sharpness_step, vs_step = train_utils.train_sharpness_power_step(state, batch, config.loss_fn, vs_step)
-            #accuracy_step = train_utils.compute_accuracy(logits_step, targets)
-            #print(f't: {step}, loss: {loss_step:0.6f}, sharpness: {sharpness_step:0.6f}, accuracy: {accuracy_step:0.6f}')
-            
-            # measure sharpness
-            #sharpness_step, _ = train_utils.hessian_power_step(state, batch, config.loss_fn, vs_step)
-
             #train for one step
             state, logits_step, loss_step = train_utils.train_step(state, batch, config.loss_fn)
             # estimate accuracy from logits
             accuracy_step = train_utils.compute_accuracy(logits_step, targets)
             
-            #print(f't: {step}, loss: {loss_step:0.6f}, sharpness: {sharpness_step:0.6f}, accuracy: {accuracy_step:0.6f}')
             
             # append them to the running metrics
-            train_loss += loss_step
-            train_accuracy += accuracy_step
+            #train_loss += loss_step
+            #train_accuracy += accuracy_step
+            
             #print(f't: {step}, Loss: {loss_step:0.4f}, Accuracy: {accuracy_step:0.4f}')
             #check for divergence
             if (jnp.isnan(loss_step) or jnp.isinf(loss_step)): divergence = True; num_batches = batch_ix+1; break
+        
         # Estimate running loss and accuracy at each epoch
         
         train_loss /= num_batches
         train_accuracy /= num_batches
 
         # Estimate test loss and accuracy at each epoch
-        print(f'E: {epoch}')
+        print('E: {epoch}')
         #test_loss, test_accuracy = train_utils.compute_metrics(state_fn, state.params, config.loss_fn, test_batches, config.num_test, config.batch_size)
         #print(f'Epoch: {epoch}, Train loss: {train_loss:0.4f}, Train accuracy: {train_accuracy:0.4f}, Test loss: {test_loss:0.4f}, Test accuracy: {test_accuracy:0.4f}')
 

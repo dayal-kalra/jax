@@ -61,9 +61,9 @@ def crop(key, batch):
     cropped_image = jax.lax.dynamic_slice(padded_image, corner, img_size)
     return cropped_image, label
 
-crop = jax.vmap(crop, 0, 0)
+batched_crop = jax.vmap(crop, 0, 0)
 
-def mixup(key, batch, alpha = 1.0):
+def mixup(key, batch):
 
     """
     Mixup data augmentation: Mixes two training examples with weight from beta distribution
@@ -75,35 +75,32 @@ def mixup(key, batch, alpha = 1.0):
 
     N = image.shape[0]
 
-    weight = jax.random.beta(key, alpha, alpha, (N, 1))
-    mixed_label = weight * label + (1.0 - weight) * label[::-1]
+    #weight = jax.random.beta(key, alpha, alpha, (N, 1)) This was causing issues with jitting; dont know why. It works well
+    weight = jax.random.uniform(key, (N, 1))
+    mixed_label = weight * label + (1.0 - weight) * label[::-1, :]
 
     weight = jnp.reshape(weight, (N, 1, 1, 1))
-    mixed_image = weight * image + (1.0 - weight) * image[::-1]
+    mixed_image = weight * image + (1.0 - weight) * image[::-1, :, :, :]
 
     return mixed_image, mixed_label
 
-@jax.jit
 def transform(key, batch):
-    image, label = batch
-
-    key, split = jax.random.split(key)
-
-    image = _random_horizontal_flip(key, image, prob = 0.1)
-    subkey, key = jax.random.split(key, )
-
-    N = image.shape[0]
-
-    image = jnp.reshape(image, (N, 32, 32, 3))
-
-    image = jnp.where(jax.random.uniform(split, (N, 1, 1, 1)) < 0.5, image[:, :, ::-1], image)
-
-    key, split = jax.random.split(key)
+    """Apply horizontal flip, crop, and mixup transformations to a batch"""
     
-    batch_split = jax.random.split(split, N)
-    image, label = crop(batch_split, (image, label))
+    imgs, labels = batch
+    num_imgs = imgs.shape[0]
+    key1, key2, key3 = jax.random.split(key, 3)
+    
+    # use key 1 to perform random horizontal flip
+    imgs = _random_horizontal_flip(key, imgs, prob = 0.5) # the last argument is the probability
+    
+    # use key2 for cropping
+    batch_split = jax.random.split(key2, num_imgs)
+    imgs, labels = batched_crop(batch_split, (imgs, labels))
 
-    return mixup(key, (image, label), alpha = 1.0)
+    #use key 3 for mixup
+    imgs, labels = mixup(key3, (imgs, labels))
+    return imgs, labels
 
 def load_image_data(dir: str, dataset: str, flatten: bool = True, num_examples: int = 1000):
     """

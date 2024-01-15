@@ -1,0 +1,3 @@
+slurmstepd: error: *** STEP 4594367.0 ON gpu-b11-3 CANCELLED AT 2024-01-12T14:15:33 ***
+slurmstepd: error: *** JOB 4594367 ON gpu-b11-3 CANCELLED AT 2024-01-12T14:15:33 ***
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
