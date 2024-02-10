@@ -70,13 +70,13 @@ def gradients_step(state: TrainState, batch: Tuple, loss_function):
     (loss, logits), grads = grad_fn(state.params)
     return grads, logits, loss
 
-@partial(jax.jit, static_argnums = 3)
-def loss_step(state: TrainState, batch: Tuple, params, loss_function):
+@partial(jax.jit, static_argnums = 2)
+def loss_step(state: TrainState, batch: Tuple, loss_function):
     "Compute loss for a single batch"
     x, y = batch
-    logits = state.apply_fn({'params': params}, x)
+    logits = state.apply_fn({'params': state.params}, x)
     loss = loss_function(logits, y)
-    return loss
+    return logits, loss
 
 @partial(jax.jit, static_argnums = 2)
 def train_step(state: TrainState, batch: Tuple, loss_function):
@@ -94,7 +94,7 @@ def train_step(state: TrainState, batch: Tuple, loss_function):
     (loss, logits), grads = grad_fn(state.params)
     #update the state
     state = state.apply_gradients(grads = grads)
-    return state, logits, loss
+    return state, logits, grads, loss
 
 @partial(jax.jit, static_argnums = 2)
 def train_sharpness_power_step(state: TrainState, batch: Tuple, loss_function, v, m_iter: int = 20):
@@ -130,7 +130,7 @@ def train_sharpness_power_step(state: TrainState, batch: Tuple, loss_function, v
     (loss, logits), grads = grad_fn(state.params)
     #update the state
     state = state.apply_gradients(grads = grads)
-    return state, logits, loss, sharpness, v
+    return state, logits, grads, loss, sharpness, v
 
 @partial(jax.jit, static_argnums = 2)
 def train_sharpness_lobpcg_step(state: TrainState, batch: Tuple, loss_function, vs, m_iter: int = 1000, tol = 1e-08):
@@ -164,7 +164,7 @@ def train_sharpness_lobpcg_step(state: TrainState, batch: Tuple, loss_function, 
     (loss, logits), grads = grad_fn(state.params)
     #update the state
     state = state.apply_gradients(grads = grads)
-    return state, logits, loss, eigs, eigvs, n_iter
+    return state, logits, grads, loss, eigs, eigvs, n_iter
 
 def compute_hessian(state, loss_function, batches, num_batches = 10, power_iterations = 20):
     top_hessian = 0
@@ -297,7 +297,7 @@ def hessian_lobpcg_step(state: TrainState, batch: Tuple, loss_function, vs, m_it
     eigs, eigvs, n_iter = sparse.linalg.lobpcg_standard(body_hvp, vs, m = m_iter, tol = tol)
     return eigs, eigvs, n_iter
 
-def data_stream(seed, ds, batch_size, augment = False):
+def data_stream(seed, ds, batch_size, augment):
     " Creates a data stream with a predifined batch size."
     train_images, train_labels = ds
     num_train = train_images.shape[0]

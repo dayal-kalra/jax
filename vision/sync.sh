@@ -1,1 +1,1 @@
-rsync -r dayal@login.zaratan.umd.edu:/home/dayal/scratch.cmtc/jax/utils utils/
+rsync -r dayal@nexuscml00.umiacs.umd.edu:~/memorization/resnet_results/ resnet_results

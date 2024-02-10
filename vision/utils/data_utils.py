@@ -84,6 +84,7 @@ def mixup(key, batch):
 
     return mixed_image, mixed_label
 
+@jax.jit
 def transform(key, batch):
     """Apply horizontal flip, crop, and mixup transformations to a batch"""
     
@@ -128,7 +129,14 @@ def load_image_data(dir: str, dataset: str, flatten: bool = True, num_examples: 
     if num_examples < x_test.shape[0]:
       x_test = x_test[:num_examples]
       y_test = y_test[:num_examples]
-      
+    
+    # move the dataset to the GPU memory
+    x_train = jnp.asarray(x_train)
+    y_train = jnp.asarray(y_train)
+
+    x_test = jnp.asarray(x_test)
+    y_test = jnp.asarray(y_test)
+
     return (x_train, y_train), (x_test, y_test)
 
 
